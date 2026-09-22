@@ -118,6 +118,17 @@ sudo systemctl start auto-deploy.service      # 手动跑一次
 journalctl -u auto-deploy -n 30               # 看日志
 ```
 
+> ⚠️ **开自动部署之前，服务器 `.env` 里必须已经填好 `KB_SHARED_PASSWORD`。**
+> 自动部署的最后一步是**重启服务**。如果那个值是空的，重起来的服务
+> 写接口就是**不设防**的——而这件事只有启动日志第一屏会说，不注意就漏了。
+> 服务绑了校园网的话，漏这一步等于把库敞开。
+
+> ⚠️ **这个单元以 root 跑，会把拉下来的文件变成 root 属主**，而服务是以
+> `<共享账号>` 的身份跑的。于是服务可能写不动 `data/`，
+> 表现是「自动部署成功，但服务起不来」。要根治得让这个单元改以服务账号运行，
+> 再配一条只放开 `systemctl restart scitech-kb` 的免密规则
+> （见 `deploy/部署说明.md` 第五节）。
+
 > 没有 sudo 时，可用用户级单元（`~/.config/systemd/user/`）+ `loginctl enable-linger`。
 > 但 `enable-linger` 一般也要权限，过渡方案，不如找管理员配系统级。
 
@@ -155,6 +166,9 @@ bash <(curl -sL https://gh-proxy.com/https://raw.githubusercontent.com/KJ-scitec
 | timer 装了不跑 | 没 `daemon-reload` / 没 enable | `sudo systemctl daemon-reload && sudo systemctl enable --now auto-deploy.timer` |
 | 想立即部署不用等 | 轮询周期 5 分钟 | `sudo systemctl start auto-deploy.service` |
 | git 报 `dubious ownership` | root 跑了非 root 属主的仓库 | 脚本已加 `safe.directory`；或手动 `git config --global --add safe.directory <目录>` |
+| 日志说「工作区有未提交改动，跳过本次部署」，但**根本没人改过代码** | 从 Windows 拷过去的文件带 **CRLF**，仓库里存的是 LF，于是 `git status` 报一堆"改动"，其实一个字都没变 | 在服务器上 `git checkout -- .` 把行尾归一。这是「Windows 上手动传代码到 Linux」的典型症状，用 `git clone` 不会有 |
+| 服务重起来之后写接口不设防了 | 服务器 `.env` 里 `KB_SHARED_PASSWORD` 是空的 | 填上再重启。启动日志第一屏会明说当前是"已启用"还是"未启用"——但它只在那时候说 |
+| `After=mysql.service` 没起作用 | 这台机器上的单元叫 `mariadb.service` | `After=` 写一个**不存在的**单元名不会报错，只是静默失效。先查：`systemctl list-units --type=service --all \| grep -iE "maria\|mysql"` |
 
 ---
 
