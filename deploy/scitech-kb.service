@@ -6,10 +6,11 @@
 # 共享账号没有 sudo，/etc/systemd/system/ 对它只读。
 # 装这个单元要找服务器管理员。详细步骤见同目录的 部署说明.md。
 #
-# 文件里的账号名和路径都是占位写法（<共享账号>）。
-# 真实账号名见交接文档——本仓库是公开的，基础设施信息不写进来。
-# 代码放在别的地方就要同步改下面六处：
-#   User / Group / WorkingDirectory / ExecStart / ReadWritePaths / Environment=HF_HOME
+# 文件里的账号名和路径都是占位写法（<服务账号> / <共享组> / <部署目录>）。
+# 真实值见交接文档——本仓库是公开的，基础设施信息不写进来。
+# 代码放在别的地方就要同步改下面这几处：
+#   User / Group / WorkingDirectory / ExecStart /
+#   ReadWritePaths / Environment=HF_HOME / Environment=HOME
 #
 # 改完必须跑 systemctl daemon-reload，否则 systemd 还用旧配置，
 # 而且不会报任何错——典型的"改了没生效"。
@@ -30,11 +31,11 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-User=<共享账号>
-Group=<共享账号>
-WorkingDirectory=/home/<共享账号>/knowledge-base
+User=<服务账号>
+Group=<共享组>
+WorkingDirectory=<部署目录>
 
-ExecStart=/home/<共享账号>/knowledge-base/.venv/bin/python -m uvicorn api.main:app \
+ExecStart=<部署目录>/.venv/bin/python -m uvicorn api.main:app \
     --host 0.0.0.0 --port 8000
 
 # ★ 绑 0.0.0.0 是为了让部员在校内网打开 http://<服务器内网IP>:8000 ——
@@ -60,7 +61,11 @@ Environment=PYTHONUNBUFFERED=1
 
 # 向量模型缓存。不固定这个路径的话会落到 ~/.cache/huggingface，
 # 而下面 ProtectHome 把家目录设成了只读，模型下不下来、服务起不来。
-Environment=HF_HOME=/home/<共享账号>/knowledge-base/.cache/huggingface
+Environment=HF_HOME=<部署目录>/.cache/huggingface
+
+# 服务账号通常是 nologin、home 也不可写。指一个可写的 HOME 给它，
+# 免得有库想往 $HOME 写东西时报一个跟业务毫无关系的错。
+Environment=HOME=/var/lib/<服务账号>
 
 Restart=always
 RestartSec=5
@@ -78,7 +83,7 @@ NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=read-only
-ReadWritePaths=/home/<共享账号>/knowledge-base/data /home/<共享账号>/knowledge-base/.cache
+ReadWritePaths=<部署目录>/data <部署目录>/.cache
 
 [Install]
 WantedBy=multi-user.target

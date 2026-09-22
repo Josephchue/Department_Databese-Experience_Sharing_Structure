@@ -93,41 +93,51 @@
 | `deploy/auto-deploy.timer` | 每 5 分钟触发一次 |
 
 脚本要点：
-- remote 默认走 `https://gh-proxy.com/https://github.com/...`（root 身份一般没配 git 代理，gh-proxy 更省事）；已配代理的机器可用 `KB_REMOTE` 直连。
+- remote 默认走 `https://gh-proxy.com/https://github.com/...`（服务器上 git 没配代理，走镜像更省事）；已配代理的机器可用 `KB_REMOTE` 直连。
 - 只有 commit 变化时才动作；无变化静默退出。
 - 工作区有未提交改动时**跳过**部署，避免覆盖。
 - 只有 `requirements.txt` 变了才重装依赖。
-- 单元以 **root** 运行（脚本最后要 `systemctl restart` 系统级服务，普通用户没权限）；脚本内已用 `git config --global --add safe.directory` 处理 root 的 dubious ownership 报错。
+- 单元以**服务账号**（不是 root）运行，脚本最后要 `systemctl restart` 系统级服务，
+  所以还得给这个账号一条免密规则；脚本内用
+  `git config --global --add safe.directory` 处理仓库属主不符时的 dubious ownership 报错。
+
+> ★ **脚本最后一步是重启服务**，而重启会重新加载向量模型（20–30 秒）。
+> 所以「HEAD 和 origin/main 不一致」+「工作区干净」同时成立时，
+> 服务会被**每 5 分钟重启一次**，页面隔几分钟卡一次。
+> 在服务器上放还没 push 的代码时要避开这个状态，详见 `deploy/部署说明.md` 第九节。
 
 ### 3.1 安装（服务器上，管理员或对应用户）
 
 ```bash
 # 1. 首次把项目部署好（见 deploy/部署说明.md，或跑 bootstrap.sh）
-cd ~/knowledge-base
+cd <部署目录>
 
 # 2. 装 systemd 单元
 sudo cp deploy/auto-deploy.service /etc/systemd/system/
 sudo cp deploy/auto-deploy.timer   /etc/systemd/system/
-#   ↑ 打开 service 文件确认 User= 和 WorkingDirectory= 与实际一致
+#   ↑ 打开 service 文件，确认 <服务账号> / <部署目录> 这些占位符都换成真实值了
 sudo systemctl daemon-reload
 sudo systemctl enable --now auto-deploy.timer
 
 # 3. 验证
-systemctl list-timers auto-deploy.timer      # 看下次触发时间
-sudo systemctl start auto-deploy.service      # 手动跑一次
-journalctl -u auto-deploy -n 30               # 看日志
+systemctl list-timers auto-deploy.timer       # 看下次触发时间
+sudo systemctl start auto-deploy.service       # 手动跑一次
+journalctl -u auto-deploy -n 30                # 看日志
 ```
+
+> ⚠️ `journalctl -u` 看别人的服务日志，要 `systemd-journal`（或 `adm`）组权限。
+> 不在组里时它**不报错**，只回一句 `-- No entries --`，
+> 看着像"这单元从没跑过"，其实只是没权限看。别被这句话带偏。
 
 > ⚠️ **开自动部署之前，服务器 `.env` 里必须已经填好 `KB_SHARED_PASSWORD`。**
 > 自动部署的最后一步是**重启服务**。如果那个值是空的，重起来的服务
 > 写接口就是**不设防**的——而这件事只有启动日志第一屏会说，不注意就漏了。
 > 服务绑了校园网的话，漏这一步等于把库敞开。
 
-> ⚠️ **这个单元以 root 跑，会把拉下来的文件变成 root 属主**，而服务是以
-> `<共享账号>` 的身份跑的。于是服务可能写不动 `data/`，
-> 表现是「自动部署成功，但服务起不来」。要根治得让这个单元改以服务账号运行，
-> 再配一条只放开 `systemctl restart scitech-kb` 的免密规则
-> （见 `deploy/部署说明.md` 第五节）。
+> ⚠️ **别图省事写 `User=root`。** root 拉下来的新文件属主是 root，而服务是以
+> 服务账号跑的，服务随后可能写不动 `data/`，表现是「自动部署成功，但服务起不来」。
+> 单元里该写服务账号；重启权限靠一条只放开 `systemctl restart scitech-kb`
+> 的免密规则补（见 `deploy/部署说明.md` 第五节）。
 
 > 没有 sudo 时，可用用户级单元（`~/.config/systemd/user/`）+ `loginctl enable-linger`。
 > 但 `enable-linger` 一般也要权限，过渡方案，不如找管理员配系统级。
@@ -162,10 +172,11 @@ bash <(curl -sL https://gh-proxy.com/https://raw.githubusercontent.com/KJ-scitec
 |------|------|------|
 | `auto-deploy` 一直没动作 | GitHub 拉取失败 | 手动 `systemctl start auto-deploy.service` 看日志；确认 gh-proxy 可达 |
 | 部署了但服务没换代码 | 服务名/路径不对 | 核对 `auto-deploy.service` 的 `User=`、`WorkingDirectory=`、`KB_SERVICE` |
-| 部署后报权限错 | 脚本改动工作区文件权限 | 确保 `knowledge-base` 目录归运行用户所有 |
+| 部署后报权限错 | 拉下来的文件属主 ≠ 跑服务的用户 | 部署目录属主设服务账号、组设共享组并开 setgid（`2770`），服务账号靠组权限就够用 |
 | timer 装了不跑 | 没 `daemon-reload` / 没 enable | `sudo systemctl daemon-reload && sudo systemctl enable --now auto-deploy.timer` |
 | 想立即部署不用等 | 轮询周期 5 分钟 | `sudo systemctl start auto-deploy.service` |
-| git 报 `dubious ownership` | root 跑了非 root 属主的仓库 | 脚本已加 `safe.directory`；或手动 `git config --global --add safe.directory <目录>` |
+| git 报 `dubious ownership` | 仓库属主 ≠ 跑 git 的用户 | 脚本已加 `safe.directory`；**但它是写进 `$HOME/.gitconfig` 的，home 不可写就静默失效**——单元里把 `HOME` / `GIT_CONFIG_GLOBAL` 指到可写目录 |
+| `journalctl -u auto-deploy` 回 `-- No entries --`，像从没跑过 | 不在 `systemd-journal`/`adm` 组里，看不到别人的服务日志 | 把自己加进组，或换 `sudo journalctl -u ...` |
 | 日志说「工作区有未提交改动，跳过本次部署」，但**根本没人改过代码** | 从 Windows 拷过去的文件带 **CRLF**，仓库里存的是 LF，于是 `git status` 报一堆"改动"，其实一个字都没变 | 在服务器上 `git checkout -- .` 把行尾归一。这是「Windows 上手动传代码到 Linux」的典型症状，用 `git clone` 不会有 |
 | 服务重起来之后写接口不设防了 | 服务器 `.env` 里 `KB_SHARED_PASSWORD` 是空的 | 填上再重启。启动日志第一屏会明说当前是"已启用"还是"未启用"——但它只在那时候说 |
 | `After=mysql.service` 没起作用 | 这台机器上的单元叫 `mariadb.service` | `After=` 写一个**不存在的**单元名不会报错，只是静默失效。先查：`systemctl list-units --type=service --all \| grep -iE "maria\|mysql"` |
@@ -178,6 +189,6 @@ bash <(curl -sL https://gh-proxy.com/https://raw.githubusercontent.com/KJ-scitec
 
 1. 在 GitHub 仓库 Secrets 存一个 Tailscale auth key。
 2. workflow 里用 `tailscale/github-action` 加入 tailnet。
-3. 再 SSH（Tailscale IP）到 M710q 执行 `~/knowledge-base/deploy/auto-deploy.sh`。
+3. 再 SSH（Tailscale IP）到 M710q 执行 `<部署目录>/deploy/auto-deploy.sh`。
 
 **暂不采用的原因**：M710q 的 Tailscale 走香港 relay，SSH 握手经常超时，作为部署链路不可靠。轮询方案不依赖它。
