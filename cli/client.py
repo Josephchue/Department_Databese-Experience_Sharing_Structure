@@ -189,13 +189,23 @@ class Client:
         self.timeout = timeout
         self._transport = transport or _default_transport
 
-    # ── 三个动词 ──────────────────────────────────────────────
+    # ── 四个动词 ──────────────────────────────────────────────
 
     def get(self, path: str, **params):
         return self._request("GET", path, params=params or None)
 
     def post(self, path: str, body: dict):
         return self._request("POST", path, json_body=body)
+
+    def patch(self, path: str, body: dict):
+        """部分更新。目前只有 K8 改标签用它。
+
+        ★ 只发**要改的那几个字段**（打标就只发 tags），
+          不要把整份 metadata 原样回传：
+          服务端那边是「读出整份 → 只改 tags → 整份写回」，
+          多余的字段传过去只会让「到底谁该负责合并」变得含糊。
+        """
+        return self._request("PATCH", path, json_body=body)
 
     def delete(self, path: str):
         return self._request("DELETE", path)

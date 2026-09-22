@@ -44,11 +44,41 @@
 
 文件：`.github/workflows/ci.yml`
 
-- 触发：向 `main` 的 push 和所有 PR。
-- 步骤：起 MariaDB → 装依赖 → 建库建表 → 造演示数据 → `pytest`。
+- 触发：向 `main` 的 push、所有 PR，以及手动 `workflow_dispatch`。
+- 步骤：起 MySQL → 装依赖 → 建库建表 → 造演示数据 → `pytest`。
 - 云端 runner 在墙外，所以 CI 里 `HF_ENDPOINT` 直接指向 `huggingface.co`（比国内镜像快）。
+- 缓存：`~/.cache/huggingface`（bge-small-zh 约 93MB）+ pip 的 wheel 缓存。
+
+> **这份文件是补上的。** 从 PR #2 起本文和 README 就写着「CI 跑 pytest、红了不许合」，
+> 但仓库里一直没有 `.github/workflows/` 这个目录——也就是说着文档里的门禁从来没生效过，
+> PR 一次都没跑过测试。2026-09-21 才把它补上（顺便修掉下面这条库不一致）。
+>
+> 补的时候特意**不跳过**模型相关的用例：`tests/conftest.py` 的 `client` 夹具一进 lifespan
+> 就要加载 embedding 模型，而 K1/K2/K5 的核心验收全用 `seeded`——跳掉等于把核心验收
+> 全跳掉，门禁就白设了。贵的一次性成本用缓存摊掉。
 
 > 建议把它设成 `main` 的必需检查（Settings → Branches → 要求状态检查通过），这样测试不过的 PR 合不进去。
+
+### 2.1 一处刻意的版本不一致（待办）
+
+| 环境 | 数据库 | 为什么 |
+|------|--------|--------|
+| 开发机 / CI | **MySQL 8.0** | CI 要挡的是**开发机上的**回归，所以跟开发机对齐 |
+| 部门服务器（M710q） | **MariaDB** | `deploy/bootstrap.sh` 装的是 `mariadb-server` |
+
+两者在字段类型、`ONLY_FULL_GROUP_BY`、JSON 函数上都有差异，也就是说
+**CI 绿了不等于服务器上就没问题**。
+
+**待办**：等哪次在服务器上真的踩到差异，再把 CI 也换成 MariaDB（或者把服务器换成 MySQL）。
+现在不动的原因是「别一次换两个变量」——同时换数据库和数据库版本，
+真红了分不清是代码的锅还是环境的锅。
+
+### 2.2 CI 没跑到的地方（首次 push 时留意）
+
+这份 YAML **在本地无法真正验证**（要 push 才会执行）。本地做过的验证是：
+建库建表/造数据/pytest 三步都在开发机手跑通过、YAML 过了解析器、环境变量名逐个对过 `api/config.py`。
+
+本地验证不到、真红了先怀疑的几处，都写在 `ci.yml` 文件头的注释里。
 
 ---
 

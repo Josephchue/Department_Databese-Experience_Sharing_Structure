@@ -9,8 +9,19 @@ Type=oneshot
 # 普通用户没这个权限。若改成普通用户，需另配 polkit/sudo 规则。
 # 注意：root 跑 git 会因目录属主不是 root 而报 "dubious ownership"，
 # auto-deploy.sh 里已用 safe.directory 处理。
+#
+# ⚠️ 装上之前必须把下面五处 <共享账号> 换成真实账号名，否则单元起不来
+#    （报错是"目录不存在"，不会提示你占位符没换）。
+#    真实账号名见交接文档——本仓库是公开的，不写进来，理由同 scitech-kb.service。
+#
+# ⚠️ 以 root 跑意味着 git 拉下来的新文件属主是 root，而服务是以
+#    <共享账号> 身份跑的，服务随后可能写不动 data/ ——
+#    "自动部署成功但服务起不来"就是从这里来的。
+#    docs/CI-CD说明.md 的排错表记了这条。要根治得让这个单元改以
+#    <共享账号> 身份运行，再给它一条只放开 `systemctl restart scitech-kb`
+#    的免密规则（见 deploy/部署说明.md 第五节）。
 User=root
-WorkingDirectory=/home/ubuntu/knowledge-base
+WorkingDirectory=/home/<共享账号>/knowledge-base
 Environment=KB_SERVICE=scitech-kb
-Environment=KB_DIR=/home/ubuntu/knowledge-base
-ExecStart=/home/ubuntu/knowledge-base/deploy/auto-deploy.sh
+Environment=KB_DIR=/home/<共享账号>/knowledge-base
+ExecStart=/home/<共享账号>/knowledge-base/deploy/auto-deploy.sh
