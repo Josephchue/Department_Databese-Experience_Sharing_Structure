@@ -131,8 +131,8 @@ journalctl -u auto-deploy -n 30                # 看日志
 
 > ⚠️ **开自动部署之前，服务器 `.env` 里必须已经填好 `KB_SHARED_PASSWORD`。**
 > 自动部署的最后一步是**重启服务**。如果那个值是空的，重起来的服务
-> 写接口就是**不设防**的——而这件事只有启动日志第一屏会说，不注意就漏了。
-> 服务绑了校园网的话，漏这一步等于把库敞开。
+> 接口就是**不设防**的（读和写都拦不住）——而这件事只有启动日志第一屏会说，
+> 不注意就漏了。服务绑了校园网的话，漏这一步等于把库敞开。
 
 > ⚠️ **别图省事写 `User=root`。** root 拉下来的新文件属主是 root，而服务是以
 > 服务账号跑的，服务随后可能写不动 `data/`，表现是「自动部署成功，但服务起不来」。
@@ -178,7 +178,7 @@ bash <(curl -sL https://gh-proxy.com/https://raw.githubusercontent.com/KJ-scitec
 | git 报 `dubious ownership` | 仓库属主 ≠ 跑 git 的用户 | 脚本已加 `safe.directory`；**但它是写进 `$HOME/.gitconfig` 的，home 不可写就静默失效**——单元里把 `HOME` / `GIT_CONFIG_GLOBAL` 指到可写目录 |
 | `journalctl -u auto-deploy` 回 `-- No entries --`，像从没跑过 | 不在 `systemd-journal`/`adm` 组里，看不到别人的服务日志 | 把自己加进组，或换 `sudo journalctl -u ...` |
 | 日志说「工作区有未提交改动，跳过本次部署」，但**根本没人改过代码** | 从 Windows 拷过去的文件带 **CRLF**，仓库里存的是 LF，于是 `git status` 报一堆"改动"，其实一个字都没变 | 在服务器上 `git checkout -- .` 把行尾归一。这是「Windows 上手动传代码到 Linux」的典型症状，用 `git clone` 不会有 |
-| 服务重起来之后写接口不设防了 | 服务器 `.env` 里 `KB_SHARED_PASSWORD` 是空的 | 填上再重启。启动日志第一屏会明说当前是"已启用"还是"未启用"——但它只在那时候说 |
+| 服务重起来之后接口不设防了 | 服务器 `.env` 里 `KB_SHARED_PASSWORD` 是空的 | 填上再重启。启动日志第一屏会明说当前是"已启用"还是"未启用"——但它只在那时候说 |
 | `After=mysql.service` 没起作用 | 这台机器上的单元叫 `mariadb.service` | `After=` 写一个**不存在的**单元名不会报错，只是静默失效。先查：`systemctl list-units --type=service --all \| grep -iE "maria\|mysql"` |
 
 ---

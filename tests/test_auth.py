@@ -223,7 +223,7 @@ def test_中文口令能登录(remote, monkeypatch):
     assert resp.status_code == 200, f"中文口令登录失败：{resp.text}"
 
 
-# ══ 免口令的两类：回环地址、读接口 ═══════════════════════════
+# ══ 免口令的三种：回环地址、问状态、静态页 ═══════════════════
 
 def test_回环地址免口令(monkeypatch):
     """★ 机器人（AstrBot）和 CLI 都在同一台机器上，走 127.0.0.1。
@@ -239,15 +239,61 @@ def test_回环地址免口令(monkeypatch):
         assert resp.status_code == 422, f"回环地址 {host} 被拦了，机器人会连不上"
 
 
-def test_读接口不登录也能用(remote, monkeypatch):
-    """★ 读是给部员用的，那正是这套东西的意义，不能被口令挡住。"""
+def test_回环地址读也不用口令(monkeypatch):
+    """★ 机器人**读**经验也走回环，这条比上面那条更容易漏。
+
+    读改成要口令之后（见下面那条），只验"写没被拦"是不够的：
+      机器人问「设备出故障了咋办」正是读接口，被拦了它就哑了。
+    """
     monkeypatch.setenv("KB_SHARED_PASSWORD", PASSWORD)
 
+    assert _client("127.0.0.1").get("/api/meta").status_code == 200
+
+
+def test_读接口也要口令(remote, monkeypatch):
+    """★ 2026-10-09 改的：原来是"只拦写、读随便看"，现在**读也要**口令。
+
+    理由是要往库里录真实成员数据：绑到校园网之后读不设门槛，等于
+      谁知道地址谁都能把成员表翻一遍。介绍卡走的是脱敏视图，
+      但经验正文、活动信息、报表数字都是原样的。
+    """
+    monkeypatch.setenv("KB_SHARED_PASSWORD", PASSWORD)
+
+    assert remote.get("/api/meta").status_code == 401
+    assert remote.get("/api/cards/members").status_code == 401
+    assert remote.get("/api/experience").status_code == 401
+
+
+def test_登录之后能读(remote, monkeypatch):
+    """读和写是同一道门：登一次，读写都通。"""
+    monkeypatch.setenv("KB_SHARED_PASSWORD", PASSWORD)
+
+    assert remote.get("/api/meta").status_code == 401
+    remote.post("/api/auth/login", json={"password": PASSWORD})
     assert remote.get("/api/meta").status_code == 200
 
 
+def test_问状态那个接口不登录也能打(remote, monkeypatch):
+    """★ /api/auth/me 必须免口令，这是整条链上最容易漏的一环。
+
+    页面第一件事就是问它"要不要口令、我登没登"（见 web/index.html）。
+      它自己也要口令的话，页面永远只拿到 401，就永远不知道该不该亮登录框——
+      **结果是谁都进不去**，而症状看着像"后端挂了"。
+    """
+    monkeypatch.setenv("KB_SHARED_PASSWORD", PASSWORD)
+
+    resp = remote.get("/api/auth/me")
+
+    assert resp.status_code == 200
+    assert resp.json() == {"auth_enabled": True, "logged_in": False}
+
+
 def test_页面本身不登录也能打开(remote, monkeypatch):
-    """门拦的是写操作，不是整个站点。"""
+    """★ 静态页必须免口令：登录框就在这张页面上，拦了就是死锁。
+
+    guard 只管 `/api/` 开头的路径。这条把那个边界钉住——
+      哪天有人把 guard 改成"拦所有请求"，这里立刻红。
+    """
     monkeypatch.setenv("KB_SHARED_PASSWORD", PASSWORD)
 
     resp = remote.get("/")
