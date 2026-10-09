@@ -35,6 +35,25 @@ class ExperienceOut(BaseModel):
     metadata: dict
 
 
+class ExperienceTagsPatch(BaseModel):
+    """改一条经验的标签（K8 打标用）。
+
+    ★ extra="forbid" 是这个类存在的全部理由，不要删。
+      Pydantic 默认**静默忽略**多余的字段：传
+          {"tags": ["设备"], "content": "把正文也改了"}
+      会正常返回 200，但正文根本没改——调用方以为改成功了。
+      契约（任务拆解 §4.9）说「只接受 tags，别的字段不开放」，
+      那就必须让多余字段报 422，而不是假装没看见。
+
+    要改正文/作者请另开接口：正文一改要重新编码向量，
+    作者一改就动了双库关联，两件事都不该混在打标这条路上。
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    tags: list[str] = Field(default_factory=list, description="整份替换，不是追加")
+
+
 class SearchHit(BaseModel):
     """一条检索结果（K2）。"""
 

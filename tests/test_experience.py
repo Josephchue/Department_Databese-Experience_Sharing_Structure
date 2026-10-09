@@ -178,6 +178,104 @@ def test_meta_lists_enums(seeded):
         assert body.get(key), f"{key} 是空的，前端下拉框会没有选项"
 
 
+# ── 标签规范化（入口拦，不靠事后补救） ─────────────────────────
+
+def test_create_rejects_tag_with_comma(seeded):
+    """★ 标签里带逗号要当场拒掉。
+
+    逗号是 Chroma 存储标签时的分隔符（拼成串存、按逗号拆回）。
+    不拦的话「设备,投影」会**静默变成两个标签**——不报错、不丢数据，
+    就是悄悄地多了一个，事后根本看不出是哪来的。
+    """
+    resp = seeded.post("/api/experience", json={"content": "标签里带逗号", "tags": ["设备,投影"]})
+    assert resp.status_code == 400
+    assert "逗号" in resp.json()["detail"]
+
+
+def test_tags_are_trimmed_deduped_and_ordered(seeded):
+    """去空白、丢空串、保序去重——顺序必须是输入顺序，不能靠 set。"""
+    created = seeded.post("/api/experience", json={
+        "content": "验收测试：标签规范化，写完就删。",
+        "tags": ["  设备 ", "设备", "投影", ""],
+    })
+    assert created.status_code == 200
+    exp_id = created.json()["exp_id"]
+
+    assert created.json()["metadata"]["tags"] == ["设备", "投影"]
+
+    seeded.delete(f"/api/experience/{exp_id}")
+
+
+def test_create_rejects_overlong_tag(seeded):
+    resp = seeded.post("/api/experience", json={"content": "超长标签", "tags": ["长" * 33]})
+    assert resp.status_code == 400
+
+
+# ── K8 改标签（PATCH）─────────────────────────────────────────
+
+def test_patch_tags_keeps_other_metadata(seeded):
+    """改标签不能动别的元信息。
+
+    正文、作者、活动 id、来源都不在这次改动的范围内，改完必须一个没变。
+    （Chroma 的 update 对 metadata 是**按键合并**的——实测只传 {"tags": …}
+    时别的键也还在。所以这条守的不是某个实现细节，而是「PATCH 只改标签」
+    这个对外契约：真要是哪天有人顺手把正文也写进去，这里会红。）
+
+
+    作者和活动 id 从 exp-1 上取，不写死数字：种子的 id 以后万一改了，
+    这条测试不该跟着红。
+    """
+    seed_meta = seeded.get("/api/experience/exp-1").json()["metadata"]
+
+    created = seeded.post("/api/experience", json={
+        "content": "验收测试：改标签丢元信息的回归。写完就删。",
+        "type": "笔记",
+        "tags": ["老标签"],
+        "author_id": seed_meta["author_id"],
+        "activity_id": seed_meta["activity_id"],
+        "source": "回归测试",
+    })
+    assert created.status_code == 200
+    exp_id = created.json()["exp_id"]
+    before = created.json()["metadata"]
+
+    try:
+        patched = seeded.patch(f"/api/experience/{exp_id}", json={"tags": ["新标签"]})
+        assert patched.status_code == 200
+        after = patched.json()["metadata"]
+
+        assert after["tags"] == ["新标签"], "PATCH 是整份替换，不是追加"
+        for key in ("author_id", "activity_id", "type", "source", "created_at"):
+            assert after.get(key) == before.get(key), (
+                f"{key} 被写丢了。Chroma 的 update 是整份替换 metadata，"
+                "PATCH 必须「读出整份 → 只改 tags → 整份写回」"
+            )
+    finally:
+        seeded.delete(f"/api/experience/{exp_id}")
+
+
+def test_patch_rejects_extra_fields(seeded):
+    """★ 只开放 tags，多传字段要 422，不能假装没看见。
+
+    Pydantic 默认**静默忽略**多余字段：不加 extra="forbid" 的话，
+    {"tags": [...], "content": "偷改正文"} 会返回 200 而正文没改，
+    调用方以为改成功了。这条测试同时验证「真的没改」。
+    """
+    before = seeded.get("/api/experience/exp-1").json()
+
+    resp = seeded.patch("/api/experience/exp-1", json={"tags": ["设备"], "content": "偷改正文"})
+    assert resp.status_code == 422, "多余字段被静默忽略了，ExperienceTagsPatch 要 extra='forbid'"
+
+    after = seeded.get("/api/experience/exp-1").json()
+    assert after["content"] == before["content"], "正文不该被这条请求动过"
+    assert after["metadata"]["tags"] == before["metadata"]["tags"], "422 的请求不该改到标签"
+
+
+def test_patch_missing_experience_returns_404(seeded):
+    resp = seeded.patch("/api/experience/exp-999999", json={"tags": ["设备"]})
+    assert resp.status_code == 404
+
+
 # ── 列表筛选 ──────────────────────────────────────────────────
 
 def test_list_filter_by_type(seeded):
