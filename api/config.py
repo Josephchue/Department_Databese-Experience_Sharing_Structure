@@ -61,7 +61,7 @@ def cors_origins() -> list[str]:
     ★ 为什么默认是空的、而不是像以前那样写 `["*"]`：
       这个仓库是公开的，服务器 IP 属于基础设施信息，不能写进代码
       （deploy/scitech-kb.service 里用 <共享账号> 占位也是同一个理由）。
-      服务器上的 .env 写 KB_CORS_ORIGINS=http://10.6.21.83:8000 这样。
+      服务器上的 .env 写 KB_CORS_ORIGINS=http://<服务器内网IP>:8000 这样。
 
     ★ 留空时**不加 CORS 中间件**：页面和接口是同一个源，本来就不需要跨域。
       只有本地换端口调试时才用得上。
