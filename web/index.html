@@ -162,30 +162,32 @@
 
   /* ── 口令登录 ─────────────────────────────────────────── */
 
-  /* 右上角的登录条 */
+  /* 页头右边：登录之后显示状态和「退出」 */
   #auth { display: inline-flex; align-items: center; gap: 6px; }
-  #auth-form { display: inline-flex; align-items: center; gap: 6px; }
-  #auth-form[hidden] { display: none; }
-  #auth-pw {
-    width: 130px; padding: 4px 8px; font-size: 12.5px;
-    border: 1px solid var(--line); border-radius: 5px;
-  }
-  #auth-pw.bad { border-color: var(--err); background: #fff7f7; }
 
-  /* ★ 没登录时藏掉写入口。
-     藏起来**不是**安全措施——服务端该拦还是拦（api/auth.py 里那套）。
-     这里只是别让部员填完一整张表单、点下去才收到一个 401。
-     用 CSS 属性选择器而不是逐个 JS 控制：列表和检索结果是整块重绘的，
-     重绘出来的按钮也能自动被这条规则管到，不用每处都记得加判断。 */
-  body.no-write [data-write] { display: none; }
-
-  /* 藏起来之后总得说一句为什么，不然页签看着像坏了 */
-  .write-hint { display: none; }
-  body.no-write .write-hint {
-    display: block; padding: 14px 16px; margin-bottom: 4px;
-    background: #f6f8fa; border: 1px dashed var(--line); border-radius: 8px;
-    color: var(--muted); font-size: 13px;
+  /* ★ 没登录时整站收起，只留一张登录卡。
+     读也要口令（api/auth.py 里那条），所以没登录的时候页面**一个数据请求都不发**，
+     免得先看见一屏 401、再猜是不是服务坏了。
+     收起**不是**安全措施——服务端该拦还是拦，这里只是别让人对着空页面发愣。
+     由 renderAuth() 挂 body.needs-login 控制。 */
+  #gate { display: none; }
+  body.needs-login #gate {
+    display: block; max-width: 440px; margin: 9vh auto 0; padding: 22px 24px;
+    background: #fff; border: 1px solid var(--line); border-radius: 10px;
+    box-shadow: 0 2px 14px rgba(0, 0, 0, .06);
   }
+  body.needs-login nav, body.needs-login main { display: none; }
+  /* 页头那个"数据库已连接"的小条也等登录后再显示 */
+  body.needs-login #health { display: none; }
+  #gate h2 { margin: 0 0 8px; font-size: 16px; }
+  #gate p { margin: 0 0 14px; color: var(--muted); font-size: 13px; line-height: 1.75; }
+  #gate .row { display: flex; gap: 8px; }
+  #gate input {
+    flex: 1; padding: 7px 10px; font-size: 14px;
+    border: 1px solid var(--line); border-radius: 6px;
+  }
+  #gate input.bad { border-color: var(--err); background: #fff7f7; }
+  #gate-msg { display: block; margin-top: 10px; font-size: 12.5px; }
 </style>
 </head>
 <body>
@@ -194,19 +196,30 @@
   <h1>学创部知识库</h1>
   <span class="sub">经验知识库 · 活动分工数据库 · 介绍卡</span>
   <span id="health">检查中…</span>
-  <!-- 口令登录。查经验、看介绍卡、看报表都不需要登录；
-       只有「写」（录经验、登记分工、新增成员、改标签、删除）需要。 -->
+  <!-- 口令登录。★ 现在**读也要**口令了（见 api/auth.py 开头），没登录时
+       整页收起、只留下面那张登录卡；这里只放登录之后的状态和「退出」。 -->
   <span id="auth">
     <span id="auth-state" class="sub"></span>
-    <span id="auth-form" hidden>
-      <input type="password" id="auth-pw" placeholder="部门口令" autocomplete="current-password">
-      <button class="btn mini" id="btn-login">登录</button>
-    </span>
     <button class="btn ghost mini" id="btn-logout" hidden>退出</button>
   </span>
 </header>
 
 <div class="banner" id="meta-warn"></div>
+
+<!-- 没登录时页面上只有这张卡（读也要口令，见 api/auth.py 开头）。
+     显示与否由 body.needs-login 控制，登录成功后整页才出来。 -->
+<div id="gate">
+  <h2>这个知识库要部门口令</h2>
+  <p>
+    为了不让校园网里谁打开地址都能翻成员表，<b>读和写都要</b>这个口令了。
+    输一次，这个浏览器记 7 天。
+  </p>
+  <div class="row">
+    <input type="password" id="auth-pw" placeholder="部门口令" autocomplete="current-password">
+    <button class="btn" id="btn-login">登录</button>
+  </div>
+  <span class="sub" id="gate-msg"></span>
+</div>
 
 <nav>
   <button data-tab="search" class="on">语义检索</button>
@@ -254,7 +267,6 @@
 
   <!-- ══ 经验录入 ══ -->
   <section id="tab-entry">
-    <div class="write-hint">录经验要部门口令。点右上角「登录」输一次，之后这个浏览器会记住。</div>
     <div class="card" data-write>
       <h2>录入一条经验</h2>
       <p class="hint">
@@ -308,7 +320,6 @@
 
   <!-- ══ 活动分工 ══ -->
   <section id="tab-duty">
-    <div class="write-hint">登记分工和新增资料要部门口令。点右上角「登录」输一次，之后这个浏览器会记住。</div>
     <div class="card" data-write>
       <h2>登记一次分工</h2>
       <p class="hint">
@@ -334,15 +345,14 @@
       <div id="duty-msg" class="msg"></div>
     </div>
 
-    <div class="write-hint">新增成员 / 活动系列 / 活动场次要部门口令。点右上角「登录」输一次。</div>
     <div class="card" data-write>
       <h2>新增资料</h2>
       <p class="hint">
         录新数据从这三张表开始，顺序是<b>系列 → 活动 → 成员</b>（活动要挂在系列下面）。
         这里<b>刻意没有</b>学号 / 手机 / 邮箱 / 班级 / 生日的输入框——
-        网页的写接口目前没有登录校验，谁打开这个页面都能提交；
-        而这些字段属于不该对外说的那一类，干脆让它在这张页面上没有入口。
-        真需要补录的，走数据库或带权限的接口。
+        页面上的口令是<b>部门共享</b>的一道门，它只回答"能不能进"，不回答"是谁进的"；
+        这类字段一旦从这儿录进来，就分不清是谁录的、该由谁负责。
+        它们走带真身份的接口（学校 CAS，见需求文档）或在数据库里补录。
       </p>
 
       <details class="explain" open>
@@ -655,7 +665,10 @@ document.querySelectorAll('nav button').forEach(btn => {
 });
 
 // ── 健康检查 ──────────────────────────────────────────────────
-(async () => {
+// ★ 它跟其它数据请求一样，只在登录之后跑（由 loadAll 调）。
+//   原来是页面一加载就打——现在读也要口令，那样会白拿一个 401，
+//   页头还会显示"后端未启动"，把"没登录"误报成"服务挂了"。
+async function checkHealth() {
   const el = document.getElementById('health');
   try {
     const h = await api('/api/health');
@@ -667,7 +680,7 @@ document.querySelectorAll('nav button').forEach(btn => {
     el.className = 'bad';
     el.textContent = '后端未启动';
   }
-})();
+}
 
 // ══ 语义检索 ══════════════════════════════════════════════════
 const searchOut = document.getElementById('search-out');
@@ -1418,11 +1431,12 @@ async function refreshRefs() {
 }
 
 // ── 口令登录 ─────────────────────────────────────────────────
-// 查经验、看介绍卡、看报表都**不需要**口令；只有「写」需要。
+// ★ 现在**读也要**口令（理由写在 api/auth.py 开头）：没登录时整页收起、
+//   只留一张登录卡，而且**一个数据请求都不发**——先发请求再收 401，
+//   部员看到的是"页面坏了"，排查方向全错。
 //
-// ★ 这里藏入口**不是安全措施**。真正的关口在服务端
-//   （api/auth.py 那个中间件），它拦的是所有写方法的请求。
-//   前端这一套只是为了别让部员填完一整张表单、点下去才收到一个 401。
+// ★ 收起页面**不是安全措施**。真正的关口是服务端那个中间件，
+//   它拦 /api/ 下的所有方法。前端这一套只是为了别让人对着空页面发愣。
 // ★ 字段名直接**照抄接口返回的**，不要在这里改成更好读的名字。
 //   tests/test_web.py 有一条测试拿页面里 `AUTH.<字段>` 和 /api/auth/me
 //   实际返回的键逐个对——改名就红。
@@ -1435,28 +1449,29 @@ let AUTH = { auth_enabled: false, logged_in: false };
 
 function renderAuth(hint) {
   const state = document.getElementById('auth-state');
-  const form = document.getElementById('auth-form');
   const out = document.getElementById('btn-logout');
+  const msg = document.getElementById('gate-msg');
 
-  // 只有"启用了口令 且 没登录"才藏写入口。
-  // ★ 没启用口令（本地开发）时**什么都不藏**——否则本地跑起来会以为页面坏了。
-  document.body.classList.toggle('no-write', AUTH.auth_enabled && !AUTH.logged_in);
+  // 只有"启用了口令 且 没登录"才收起整页。
+  // ★ 没启用口令（本地开发）时**什么都不收**——否则本地跑起来会以为页面坏了。
+  const needLogin = AUTH.auth_enabled && !AUTH.logged_in;
+  document.body.classList.toggle('needs-login', needLogin);
 
-  state.style.color = hint ? 'var(--err)' : '';
+  // 提示（口令不对 / 会话过期）没登录时显示在卡片上，登录后显示在页头。
+  msg.textContent = needLogin ? (hint || '') : '';
+  msg.style.color = hint ? 'var(--err)' : '';
+  state.style.color = (!needLogin && hint) ? 'var(--err)' : '';
 
   if (!AUTH.auth_enabled) {
     state.textContent = '';
-    form.hidden = true;
     out.hidden = true;
     return;
   }
   if (AUTH.logged_in) {
     state.textContent = hint || '已登录';
-    form.hidden = true;
     out.hidden = false;
   } else {
-    state.textContent = hint || '未登录（只能看）';
-    form.hidden = false;
+    state.textContent = '';
     out.hidden = true;
   }
 }
@@ -1496,6 +1511,7 @@ async function doLogin() {
     });
     input.value = '';
     renderAuth();
+    await loadAll();   // 登录成功，这才开始发数据请求（没登录时一个都没发）
   } catch (e) {
     input.classList.add('bad');
     // 口令不对和"接口连不上"要分开说——都写成"口令错误"会把人带偏
@@ -1523,8 +1539,10 @@ document.getElementById('auth-pw').addEventListener('keydown', ev => {
   if (ev.key === 'Enter') doLogin();
 });
 
-(async () => {
-  await loadAuth();   // 先问服务端要不要口令，再决定入口藏不藏
+// 把"该显示的东西"全draw一遍。抽成函数是因为登录成功后要再跑一次
+// ——没登录的时候这些请求一个都不该发（读也要口令）。
+async function loadAll() {
+  checkHealth();
   await loadMeta();
   fill(document.getElementById('e-type'), META.experience_types.map(t => ({ value: t, label: t })));
   fill(document.getElementById('nm-status'), META.member_status.map(t => ({ value: t, label: t })));
@@ -1541,6 +1559,12 @@ document.getElementById('auth-pw').addEventListener('keydown', ev => {
   loadActivities();
   loadParticipations();
   loadReports();
+}
+
+(async () => {
+  await loadAuth();   // 先问服务端：要不要口令、我登没登
+  // 没登录就一个数据请求都不发，等登录卡那边成功之后再 loadAll()
+  if (!AUTH.auth_enabled || AUTH.logged_in) await loadAll();
 })();
 </script>
 </body>

@@ -40,12 +40,12 @@ async def lifespan(app: FastAPI):
     #   只有等绑到校园网、被人写进脏数据了才会发现——
     #   而那时候已经晚了。宁可每次启动吵一句。
     if config.shared_password():
-        print("鉴权：已启用（写接口要口令；本机 127.0.0.1 免口令，机器人走这条）")
+        print("鉴权：已启用（读写都要口令；本机 127.0.0.1 免口令，机器人走这条）")
     else:
         print("!" * 60)
         print("鉴权：**未启用** —— .env 里没有 KB_SHARED_PASSWORD。")
-        print("      写接口现在不设防。绑 0.0.0.0 之前必须先配上这个值，")
-        print("      否则校园网里谁知道地址谁都能改数据。")
+        print("      接口现在不设防，读和写都拦不住。绑 0.0.0.0 之前必须先配上这个值，")
+        print("      否则校园网里谁知道地址谁都能把成员表翻一遍、也能改数据。")
         print("!" * 60)
 
     yield
@@ -67,7 +67,7 @@ app = FastAPI(
 #   401 也会经过 CORS 那一层，浏览器才看得见状态码；
 #   反过来加的话，401 没有跨域头，前端只会看到一句语焉不详的网络错误。
 #
-# guard 拦的是 /api/ 下所有写方法（POST/PUT/PATCH/DELETE），GET 放行。
+# guard 拦的是 /api/ 下的**所有方法**（含 GET——读也要口令，理由见 api/auth.py 开头）。
 # 为什么用中间件而不是给每个接口加依赖，见 api/auth.py 开头的说明。
 app.add_middleware(BaseHTTPMiddleware, dispatch=auth.guard)
 
@@ -127,7 +127,7 @@ def meta():
       详情说 exp-999 不存在」，看着像缓存问题，其实是路由顺序。
 
     ★ 这些值只用来填下拉框，服务端**不拿它们做校验**（EXPERIENCE_TYPES 除外，
-      那条在 POST 里真的会拦）。理由：写接口现在没有鉴权，
+      那条在 POST 里真的会拦）。理由：这几列在 schema 里本来就是开放的 VARCHAR，
       机器人那边可能已经在用「主持」「签到」这类写法，硬拦会把合法记录挡在门外。
     """
     return {
