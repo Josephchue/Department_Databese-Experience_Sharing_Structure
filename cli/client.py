@@ -201,9 +201,8 @@ class Client:
         """部分更新。目前只有 K8 改标签用它。
 
         ★ 只发**要改的那几个字段**（打标就只发 tags），
-          不要把整份 metadata 原样回传：
-          服务端那边是「读出整份 → 只改 tags → 整份写回」，
-          多余的字段传过去只会让「到底谁该负责合并」变得含糊。
+          不要把整份 metadata 原样回传：PATCH 只开放 tags，多传字段会 422。
+          而 tags 本身是**整份替换**（不是追加），所以调用方要发完整的标签列表。
         """
         return self._request("PATCH", path, json_body=body)
 

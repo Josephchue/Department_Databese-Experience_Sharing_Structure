@@ -295,7 +295,8 @@ def run_tag(args, api: client.Client) -> client.Result:
         )
 
     # 逐条 PATCH。★ 只发 {"tags": [...]}：正文/作者/活动 id 都不在这次的职责里，
-    # 服务端会读出整份 metadata、只换 tags、再整份写回（见 experience.py 的说明）。
+    # 服务端也只收 tags（多传会 422）。tags 是**整份替换**不是追加，
+    # 所以这里发的是算好的完整标签列表。
     done: list[dict[str, Any]] = []
     for item in pending:
         api.patch(f"/api/experience/{item['exp_id']}", {"tags": item["tags"]})
