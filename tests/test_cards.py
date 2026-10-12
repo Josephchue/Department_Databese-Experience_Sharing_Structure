@@ -39,7 +39,7 @@ def test_member_card_text_renders_every_filled_field():
             "grade": "2025级",
             "major": "软件工程",
             "org_unit": "知识库组",
-            "title": "组员",
+            "title": "部员",
             "status": "在部",
             "join_term": "2025-2026",
             "skills": ["Python"],
@@ -60,7 +60,7 @@ def test_member_card_text_renders_every_filled_field():
 
     assert "【某人】" in text
     assert "2025级 · 软件工程" in text
-    assert "知识库组 · 组员" in text
+    assert "知识库组 · 部员" in text
     assert "状态：在部 · 2025-2026 入部" in text
     assert "技能：Python" in text
     assert "荣誉：优秀部员" in text
