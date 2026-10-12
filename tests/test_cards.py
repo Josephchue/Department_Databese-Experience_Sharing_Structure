@@ -255,3 +255,17 @@ def test_single_activity_card_matches_the_list(seeded):
 def test_missing_cards_return_404(seeded):
     assert seeded.get("/api/cards/members/999999").status_code == 404
     assert seeded.get("/api/cards/activities/999999").status_code == 404
+
+
+def test_介绍卡按职务排序(seeded):
+    """介绍卡：职务高的在前，同职务按姓名。
+
+    只断言权重单调不减，不写死具体是谁——CI 跑的是种子数据，
+    里面没有主席/部长，写死名字会让这条测试变成「数据一变就红」。
+    """
+    from api import schemas
+
+    cards = seeded.get("/api/cards/members").json()
+    ranks = [schemas.title_rank(c["fields"].get("title")) for c in cards]
+
+    assert ranks == sorted(ranks), "介绍卡没按职务排序"
